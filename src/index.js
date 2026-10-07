@@ -6,6 +6,7 @@
 import { pathToFileURL } from "node:url";
 import { run } from "probot";
 import { requireEnv, GITHUB_VARS, LLM_VARS } from "./config.js";
+import { handlePullRequest } from "./reviewer.js";
 
 const PR_EVENTS = ["pull_request.opened", "pull_request.synchronize", "pull_request.reopened"];
 
@@ -25,6 +26,9 @@ export default function app(probot) {
       },
       `webhook received: pull_request.${action}`
     );
+
+    // Review the PR. handlePullRequest catches its own errors, so the server never crashes.
+    await handlePullRequest(context);
   });
 
   probot.log.info("PRMentor is listening for pull_request events");

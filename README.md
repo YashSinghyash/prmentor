@@ -70,7 +70,7 @@ On the app's settings page, click **Install App**, choose your account, select *
 
 ### 6. Add your Groq key
 
-Put your key in `.env` as `GROQ_API_KEY`. To try a different model, change `GROQ_MODEL` (default `llama-3.3-70b-versatile`).
+Put your key in `.env` as `GROQ_API_KEY`. To try a different model, change `GROQ_MODEL` (default `openai/gpt-oss-120b`).
 
 ## Running
 
