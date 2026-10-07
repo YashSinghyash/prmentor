@@ -2,6 +2,7 @@
 
 import { buildDiff } from "./diff.js";
 import { review, LLMError } from "./llm.js";
+import { saveIssues } from "./db.js";
 
 // In-memory cache keyed by "owner/repo@headSha". Webhooks can be delivered twice,
 // and the same commit should never cost two Groq calls. It resets when the app restarts.
@@ -84,6 +85,7 @@ async function reviewPullRequest(context) {
   // the whole review if even one inline comment had an invalid line.
   const seen = new Set();
   const comments = [];
+  const posted = []; // the issues behind each comment
   for (const issue of issues) {
     const lines = validLines.get(issue.file);
     const dedupeKey = `${issue.file}:${issue.line}:${issue.concept}`;
@@ -99,6 +101,7 @@ async function reviewPullRequest(context) {
       side: "RIGHT", // RIGHT = the new version of the file
       body: formatComment(issue),
     });
+    posted.push(issue); // same order as `comments`, used to match ids below
     if (comments.length >= MAX_COMMENTS) break;
   }
 
@@ -107,13 +110,67 @@ async function reviewPullRequest(context) {
     comments.length > 0
       ? `PRMentor found ${comments.length} thing${comments.length === 1 ? "" : "s"} worth a look. See the inline comments.`
       : "PRMentor reviewed this PR and found no bugs or security issues. Nice work!";
-  await postReview(octokit, repo, pr, summary + (note ? `\n\n_${note}_` : ""), comments);
+  const { data: createdReview } = await postReview(octokit, repo, pr, summary + (note ? `\n\n_${note}_` : ""), comments);
   log.info(`Posted review on PR #${pr.number} with ${comments.length} inline comment(s)`);
+
+  // 6. Remember each issue by its comment id so "/fix" can reveal the answer later.
+  // The review is already public at this point, so a storage problem is logged, not thrown
+  // (throwing would drop the cache entry and cause a duplicate review on redelivery).
+  if (comments.length > 0) {
+    try {
+      await storeIssues(octokit, repo, pr, repository.full_name, createdReview.id, posted);
+    } catch (err) {
+      log.error({ err }, "Review was posted but saving issues failed; /fix will not work for it");
+    }
+  }
+}
+
+/**
+ * createReview does not return the ids of the inline comments, so we list the
+ * review's comments and match them to our issues. GitHub returns them in the
+ * order we sent them; we double-check the file path to be safe.
+ */
+async function storeIssues(octokit, repo, pr, fullName, reviewId, issues) {
+  const created = await octokit.paginate(octokit.rest.pulls.listCommentsForReview, {
+    ...repo,
+    pull_number: pr.number,
+    review_id: reviewId,
+    per_page: 100,
+  });
+
+  const rows = [];
+  issues.forEach((issue, i) => {
+    const comment = created[i];
+    if (!comment || comment.path !== issue.file) return; // mismatch: skip rather than store wrong data
+    rows.push({
+      comment_id: comment.id,
+      repo: fullName,
+      pr: pr.number,
+      file: issue.file,
+      line: issue.line,
+      concept: issue.concept,
+      severity: issue.severity,
+      hint: issue.hint,
+      fix: issue.fix,
+      author: pr.user.login,
+    });
+  });
+  saveIssues(rows);
 }
 
 function formatComment(issue) {
   const icon = SEVERITY_ICON[issue.severity] ?? "";
-  return `${icon} **${issue.concept}** (${issue.severity})\n\n${issue.message}`;
+  const badge = issue.severity.charAt(0).toUpperCase() + issue.severity.slice(1);
+  const learnUrl = `https://learn.microsoft.com/en-us/search/?terms=${encodeURIComponent(issue.learnQuery)}`;
+  return [
+    `${icon} **${badge}** · \`${issue.concept}\``,
+    "",
+    issue.hint,
+    "",
+    `📚 [Learn more on Microsoft Learn](${learnUrl})`,
+    "",
+    "Reply `/fix` to reveal the full solution.",
+  ].join("\n");
 }
 
 function postReview(octokit, repo, pr, body, comments) {

@@ -2,6 +2,8 @@
 // Every other file reads settings from here instead of touching process.env directly.
 
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
 // quiet: true stops dotenv from printing its own banner on every start.
@@ -19,6 +21,8 @@ export const config = {
   webhookSecret: process.env.WEBHOOK_SECRET,
   webhookProxyUrl: process.env.WEBHOOK_PROXY_URL,
   port: Number(process.env.PORT) || 3000,
+  // Resolved from the project root so it does not depend on where you run npm from.
+  dbPath: process.env.DB_PATH || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "prmentor.db"),
   groq: {
     apiKey: process.env.GROQ_API_KEY,
     baseUrl: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",

@@ -4,7 +4,7 @@ A GitHub App that reviews pull requests for students. Instead of handing over th
 
 Everything runs on your machine. GitHub reaches it through a free [smee.io](https://smee.io) tunnel, and the LLM is Groq's free API.
 
-> **Status: Phase 0 (setup).** The app receives pull request webhooks and logs them. Reviewing comes in Phase 1.
+> **Status: Phase 2 (teaching mode).** The app reviews PRs and posts inline *hints* (not answers). Reply `/fix` to a comment to reveal the full solution.
 
 ## Requirements
 
@@ -47,7 +47,9 @@ Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHu
 - **Contents:** Read-only
 - **Metadata:** Read-only (GitHub selects this automatically)
 
-**Subscribe to events:** check **Pull request**.
+**Subscribe to events:** check **Pull request** and **Pull request review comment** (the second one lets the app see your `/fix` replies).
+
+> Already created the app in an earlier phase? Open the app's settings → **Permissions & events** → **Subscribe to events**, tick **Pull request review comment**, and save. No new permissions are needed (replying in a thread uses *Pull requests: Read & write*), so you don't have to re-approve the installation.
 
 **Where can this GitHub App be installed?** "Only on this account" is fine.
 
@@ -107,12 +109,26 @@ If any required variable is missing, the app stops at startup and lists what to 
 | `npm start` | Start the app once |
 | `npm run check:llm` | Send a tiny test prompt to Groq and print the reply |
 
+## How teaching mode works
+
+1. Open a PR. PRMentor posts one review with inline comments. Each comment shows a severity badge, a concept tag (like `sql-injection`), a Socratic hint, and a Microsoft Learn link.
+2. Think about the hint and try fixing it yourself.
+3. Stuck? Reply `/fix` (or "show fix") in that comment's thread. PRMentor replies with the full explanation and corrected code.
+
+Issues and fixes are stored in a local SQLite file, `data/prmentor.db` (ignored by git). Delete it to start fresh.
+
 ## Project layout
 
 ```
 src/
   index.js     Probot app: webhook handlers and server start-up
+  reviewer.js  Fetches the diff, calls the LLM, posts the review, saves issues
+  fix.js       Handles "/fix" replies and reveals the stored solution
   llm.js       Groq client (chat) and the review(diff) entry point
+  prompts.js   The system prompt (edit this to change review behaviour)
+  concepts.js  The fixed list of concept tags
+  diff.js      Filters files and builds the size-limited diff prompt
+  db.js        SQLite storage (data/prmentor.db)
   config.js    Loads .env and validates required variables
 scripts/
   check-llm.js Groq connectivity check

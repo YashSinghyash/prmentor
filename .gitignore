@@ -3,6 +3,8 @@
 .env
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.log
 *.pem
 # Dependencies

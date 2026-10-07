@@ -3,6 +3,7 @@
 // only this file should have to change.
 
 import { config } from "./config.js";
+import { normalizeConcept } from "./concepts.js";
 import { REVIEW_SYSTEM_PROMPT, buildReviewUserPrompt } from "./prompts.js";
 
 /** Error with a `kind` so callers can tell rate limits from bad output. */
@@ -64,12 +65,17 @@ export async function chat(messages, { temperature = 0.2, maxTokens = 512, json 
  */
 export function extractJson(text) {
   if (!text) throw new Error("empty reply");
-  const cleaned = text.replace(/```(?:json)?/gi, "").trim();
+  // Strip only an OUTER ```json fence. Fences inside string values (the "fix" code
+  // blocks) must stay untouched.
+  const trimmed = text.trim();
+  const cleaned = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // fall through to the scan below
+  for (const candidate of [trimmed, cleaned]) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // try the next candidate, then the scan below
+    }
   }
 
   // Scan for a balanced {...}, skipping braces that appear inside strings.
@@ -104,21 +110,39 @@ function cleanIssues(raw) {
   for (const i of raw) {
     const line = Number(i?.line);
     if (typeof i?.file !== "string" || !Number.isInteger(line)) continue;
-    if (typeof i?.message !== "string" || !i.message.trim()) continue;
+    // Both texts are required: without a hint there is nothing to show now,
+    // and without a fix there is nothing to reveal later.
+    if (typeof i?.hint !== "string" || !i.hint.trim()) continue;
+    if (typeof i?.fix !== "string" || !i.fix.trim()) continue;
     const severity = String(i.severity || "").toLowerCase();
+    const concept = normalizeConcept(i.concept);
     issues.push({
       file: i.file.trim(),
       line,
       severity: SEVERITIES.includes(severity) ? severity : "medium",
-      concept: typeof i.concept === "string" && i.concept.trim() ? i.concept.trim() : "code quality",
-      message: i.message.trim(),
+      concept,
+      hint: stripCode(i.hint),
+      fix: i.fix.trim(),
+      learnQuery:
+        typeof i.learnQuery === "string" && i.learnQuery.trim()
+          ? i.learnQuery.trim().slice(0, 80)
+          : concept.replace(/-/g, " "),
     });
   }
   return issues;
 }
 
+/** Safety net: if the model leaks code into a hint despite the prompt, remove it. */
+function stripCode(hint) {
+  return hint
+    .replace(/```[\s\S]*?```/g, "") // fenced code blocks
+    .replace(/`[^`]*`/g, "") // inline code
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /**
- * Reviews a diff and returns { issues: [{ file, line, severity, concept, message }] }.
+ * Reviews a diff and returns { issues: [{ file, line, severity, concept, hint, fix, learnQuery }] }.
  * `diff` is the annotated diff text; `note` says what was left out.
  * Throws LLMError on rate limits, HTTP errors, or unparseable output.
  */
@@ -132,7 +156,7 @@ export async function review(diff, note = "") {
       json: true,
       // gpt-oss is a reasoning model: its "thinking" tokens count toward this limit,
       // so it needs far more than the visible answer alone would.
-      maxTokens: 6000,
+      maxTokens: 8000,
       // "low" keeps reasoning short, which saves tokens and rate limit.
       extra: { reasoning_effort: "low" },
     }

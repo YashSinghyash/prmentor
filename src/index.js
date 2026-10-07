@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { run } from "probot";
 import { requireEnv, GITHUB_VARS, LLM_VARS } from "./config.js";
 import { handlePullRequest } from "./reviewer.js";
+import { handleReviewComment } from "./fix.js";
 
 const PR_EVENTS = ["pull_request.opened", "pull_request.synchronize", "pull_request.reopened"];
 
@@ -31,7 +32,10 @@ export default function app(probot) {
     await handlePullRequest(context);
   });
 
-  probot.log.info("PRMentor is listening for pull_request events");
+  // Students reply "/fix" on one of our inline comments to reveal the full solution.
+  probot.on("pull_request_review_comment.created", handleReviewComment);
+
+  probot.log.info("PRMentor is listening for pull_request and pull_request_review_comment events");
 }
 
 // Only start the server when this file is run directly (not when imported by tests later).
