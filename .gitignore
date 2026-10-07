@@ -1,0 +1,12 @@
+
+.DS_Store
+.env
+*.db
+*.db-journal
+*.log
+*.pem
+# Dependencies
+# Local databases
+# Logs / OS files
+# Secrets
+node_modules/

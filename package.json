@@ -1,0 +1,23 @@
+{
+  "name": "prmentor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A GitHub App that reviews pull requests and teaches students with hints instead of just fixes.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check:llm": "node scripts/check-llm.js"
+  },
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.6",
+    "probot": "^14.3.2"
+  },
+  "devDependencies": {
+    "smee-client": "^5.0.0"
+  }
+}
