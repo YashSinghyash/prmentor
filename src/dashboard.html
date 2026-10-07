@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRMentor Dashboard</title>
+<style>
+  /* Colors are variables so dark mode only has to redefine them. */
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #14181f; --muted: #566074; --border: #d9dde5;
+    --accent: #2563eb; --accent-soft: #dbe7ff;
+    --high: #c62828; --medium: #b45309; --low: #1d6fa5;
+    --good: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218; --card: #1a1f29; --text: #f1f4f9; --muted: #a3adbf; --border: #2c3442;
+      --accent: #6ea0ff; --accent-soft: #223356;
+      --high: #ff7b72; --medium: #f0b45a; --low: #6cb6f0;
+      --good: #5fd08a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 18px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; /* large base size for projectors */
+  }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 20px 56px; }
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  h1 { font-size: 2rem; margin: 0; }
+  h1 small { display: block; font-size: 1rem; font-weight: 400; color: var(--muted); }
+  h2 { font-size: 1.35rem; margin: 0 0 12px; }
+  label { color: var(--muted); margin-right: 8px; }
+  select {
+    font: inherit; padding: 8px 12px; border-radius: 8px; color: var(--text);
+    background: var(--card); border: 1px solid var(--border);
+  }
+  section { margin-bottom: 28px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .grid { display: grid; gap: 16px; }
+  .stats { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .weak { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .charts { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+  .big { font-size: 2.6rem; font-weight: 700; line-height: 1.1; }
+  .muted { color: var(--muted); }
+  .note { font-size: 0.95rem; color: var(--muted); margin-top: 6px; }
+  .weak .card.first { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .rank { color: var(--muted); font-size: 0.95rem; }
+  .concept { font-size: 1.5rem; font-weight: 700; margin: 2px 0 6px; }
+  a { color: var(--accent); }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .pill { padding: 2px 12px; border-radius: 999px; border: 2px solid currentColor; font-weight: 600; }
+  .pill.high { color: var(--high); } .pill.medium { color: var(--medium); } .pill.low { color: var(--low); }
+  .chart-box { position: relative; height: 340px; }
+  table { width: 100%; border-collapse: collapse; font-size: 1rem; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .sev { font-weight: 700; }
+  .sev.high { color: var(--high); } .sev.medium { color: var(--medium); } .sev.low { color: var(--low); }
+  .scroll { overflow-x: auto; }
+  .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+  code { background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>PRMentor <small>Skill dashboard</small></h1>
+    <div><label for="student">Student</label><select id="student"></select></div>
+  </header>
+
+  <div id="empty" class="card empty" hidden>
+    No reviewed issues yet.<br>Open a pull request on your test repo and refresh this page.
+  </div>
+
+  <div id="content" hidden>
+    <section>
+      <h2>Weak areas</h2>
+      <div id="weak" class="grid weak"></div>
+    </section>
+
+    <section class="grid stats">
+      <div class="card">
+        <div class="muted">Fix reveal rate</div>
+        <div class="big" id="revealRate">0%</div>
+        <div class="note" id="revealNote"></div>
+      </div>
+      <div class="card">
+        <div class="muted">Total issues found</div>
+        <div class="big" id="total">0</div>
+        <div class="pills" id="severity"></div>
+      </div>
+    </section>
+
+    <section class="grid charts">
+      <div class="card">
+        <h2>Issues per concept</h2>
+        <div class="chart-box"><canvas id="conceptChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Issues per week</h2>
+        <div class="chart-box"><canvas id="weekChart"></canvas></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent issues</h2>
+      <div class="card scroll">
+        <table>
+          <thead><tr><th>When</th><th>Pull request</th><th>File</th><th>Concept</th><th>Severity</th><th>Answer shown?</th></tr></thead>
+          <tbody id="recent"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Pinned Chart.js version loaded from a CDN, so there is no build step. It needs internet access. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+// Issue text comes from GitHub (usernames, file paths), so always escape before using innerHTML.
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const getJson = async (url) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url} -> ${res.status}`);
+  return res.json();
+};
+
+let charts = {};
+let currentStudent = decodeURIComponent(location.hash.slice(1)) || null; // remembered across refreshes
+
+async function loadStudents() {
+  const students = await getJson("/api/students");
+  $("empty").hidden = students.length > 0;
+  $("content").hidden = students.length === 0;
+  if (students.length === 0) { $("student").innerHTML = ""; return false; }
+
+  if (!students.some((s) => s.author === currentStudent)) currentStudent = students[0].author;
+  $("student").innerHTML = students
+    .map((s) => `<option value="${esc(s.author)}">${esc(s.author)} (${s.issues})</option>`)
+    .join("");
+  $("student").value = currentStudent;
+  return true;
+}
+
+async function loadDashboard() {
+  if (!(await loadStudents())) return;
+  const author = encodeURIComponent(currentStudent);
+  const [skills, recent] = await Promise.all([
+    getJson(`/api/students/${author}/skills`),
+    getJson(`/api/recent?author=${author}`),
+  ]);
+  renderWeak(skills);
+  renderStats(skills);
+  renderCharts(skills);
+  renderRecent(recent);
+}
+
+function renderWeak(s) {
+  if (s.weakAreas.length === 0) { $("weak").innerHTML = `<div class="card muted">Nothing to work on yet.</div>`; return; }
+  $("weak").innerHTML = s.weakAreas.map((w, i) => `
+    <div class="card ${i === 0 ? "first" : ""}">
+      <div class="rank">#${i + 1} to work on</div>
+      <div class="concept">${esc(w.concept)}</div>
+      <div>${esc(w.sentence)}</div>
+      <div class="note"><a href="${esc(w.learnUrl)}" target="_blank" rel="noopener">Learn about ${esc(w.concept)} on Microsoft Learn &rarr;</a></div>
+    </div>`).join("");
+}
+
+function renderStats(s) {
+  $("revealRate").textContent = `${Math.round(s.revealRate * 100)}%`;
+  $("revealNote").textContent =
+    `${s.revealed} of ${s.total} issues: how often you needed the full answer. Lower is better.`;
+  $("total").textContent = s.total;
+  $("severity").innerHTML = ["high", "medium", "low"]
+    .map((k) => `<span class="pill ${k}">${s.severity[k]} ${k}</span>`).join("");
+}
+
+// Update an existing chart in place, or create it the first time (avoids flicker on auto-refresh).
+function upsertChart(key, canvasId, config) {
+  if (charts[key]) {
+    charts[key].data = config.data;
+    charts[key].options = config.options;
+    charts[key].update("none");
+  } else {
+    charts[key] = new Chart($(canvasId), config);
+  }
+}
+
+function renderCharts(s) {
+  if (typeof Chart === "undefined") {
+    document.querySelectorAll(".chart-box").forEach((el) => {
+      el.innerHTML = `<div class="muted">Charts need internet access to load Chart.js from the CDN.</div>`;
+    });
+    return;
+  }
+  Chart.defaults.color = css("--text");
+  Chart.defaults.font.size = 15;
+  Chart.defaults.borderColor = css("--border");
+  const base = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+  const integerAxis = { beginAtZero: true, ticks: { precision: 0 } };
+
+  upsertChart("concept", "conceptChart", {
+    type: "bar",
+    data: {
+      labels: s.concepts.map((c) => c.concept),
+      datasets: [{ label: "Issues", data: s.concepts.map((c) => c.count), backgroundColor: css("--accent"), borderRadius: 4 }],
+    },
+    options: { ...base, indexAxis: "y", scales: { x: integerAxis } }, // horizontal bars fit long names
+  });
+
+  const weekLabel = (w) => new Date(`${w}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  upsertChart("week", "weekChart", {
+    type: "line",
+    data: {
+      labels: s.weekly.map((w) => weekLabel(w.week)),
+      datasets: [{
+        label: "Issues", data: s.weekly.map((w) => w.count),
+        borderColor: css("--accent"), backgroundColor: css("--accent-soft"),
+        fill: true, tension: 0.3, borderWidth: 3, pointRadius: 5,
+      }],
+    },
+    options: { ...base, scales: { y: integerAxis, x: { title: { display: true, text: "Week starting" } } } },
+  });
+}
+
+function renderRecent(rows) {
+  $("recent").innerHTML = rows.map((r) => {
+    // created_at is UTC in "YYYY-MM-DD HH:MM:SS" form
+    const when = new Date(r.created_at.replace(" ", "T") + "Z").toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const prUrl = `https://github.com/${r.repo}/pull/${r.pr}#discussion_r${r.comment_id}`;
+    return `<tr>
+      <td>${esc(when)}</td>
+      <td><a href="${esc(prUrl)}" target="_blank" rel="noopener">${esc(r.repo)} #${r.pr}</a></td>
+      <td><code>${esc(r.file)}:${r.line}</code></td>
+      <td>${esc(r.concept)}</td>
+      <td class="sev ${esc(r.severity)}">${esc(r.severity)}</td>
+      <td>${r.revealed ? "Yes" : "No"}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted">No issues yet.</td></tr>`;
+}
+
+$("student").addEventListener("change", (e) => {
+  currentStudent = e.target.value;
+  location.hash = encodeURIComponent(currentStudent);
+  loadDashboard();
+});
+
+// Colors come from CSS variables, so rebuild the charts when the OS theme flips.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  Object.values(charts).forEach((c) => c.destroy());
+  charts = {};
+  loadDashboard();
+});
+
+loadDashboard().catch((err) => { $("empty").hidden = false; $("empty").textContent = `Could not load data: ${err.message}`; });
+setInterval(() => loadDashboard().catch(() => {}), 15000); // live-update while PRs come in
+</script>
+</body>
+</html>

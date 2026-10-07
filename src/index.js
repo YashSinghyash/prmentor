@@ -5,14 +5,15 @@
 
 import { pathToFileURL } from "node:url";
 import { run } from "probot";
-import { requireEnv, GITHUB_VARS, LLM_VARS } from "./config.js";
+import { config, requireEnv, GITHUB_VARS, LLM_VARS } from "./config.js";
 import { handlePullRequest } from "./reviewer.js";
 import { handleReviewComment } from "./fix.js";
+import { dashboardHandler } from "./dashboard.js";
 
 const PR_EVENTS = ["pull_request.opened", "pull_request.synchronize", "pull_request.reopened"];
 
-/** The Probot app: registers webhook handlers. */
-export default function app(probot) {
+/** The Probot app: registers webhook handlers and the dashboard. */
+export default function app(probot, { addHandler } = {}) {
   probot.on(PR_EVENTS, async (context) => {
     const { action, pull_request: pr, repository } = context.payload;
 
@@ -35,7 +36,12 @@ export default function app(probot) {
   // Students reply "/fix" on one of our inline comments to reveal the full solution.
   probot.on("pull_request_review_comment.created", handleReviewComment);
 
+  // The skill dashboard shares this server (and port) with the webhook endpoint.
+  // addHandler is only provided when Probot's own server runs the app.
+  if (addHandler) addHandler(dashboardHandler);
+
   probot.log.info("PRMentor is listening for pull_request and pull_request_review_comment events");
+  probot.log.info(`Dashboard: http://localhost:${config.port}/dashboard (database: ${config.dbPath})`);
 }
 
 // Only start the server when this file is run directly (not when imported by tests later).

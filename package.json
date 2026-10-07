@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "check:llm": "node scripts/check-llm.js"
+    "check:llm": "node scripts/check-llm.js",
+    "seed": "node scripts/seed-demo.js"
   },
   "engines": {
     "node": ">=20.18.1"

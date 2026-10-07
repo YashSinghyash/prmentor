@@ -21,8 +21,10 @@ export const config = {
   webhookSecret: process.env.WEBHOOK_SECRET,
   webhookProxyUrl: process.env.WEBHOOK_PROXY_URL,
   port: Number(process.env.PORT) || 3000,
-  // Resolved from the project root so it does not depend on where you run npm from.
-  dbPath: process.env.DB_PATH || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "prmentor.db"),
+  // DB_PATH (e.g. data/demo.db) is relative to where you run npm; the default is always <project>/data/prmentor.db.
+  dbPath: process.env.DB_PATH
+    ? path.resolve(process.env.DB_PATH)
+    : path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "prmentor.db"),
   groq: {
     apiKey: process.env.GROQ_API_KEY,
     baseUrl: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",

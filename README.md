@@ -4,7 +4,7 @@ A GitHub App that reviews pull requests for students. Instead of handing over th
 
 Everything runs on your machine. GitHub reaches it through a free [smee.io](https://smee.io) tunnel, and the LLM is Groq's free API.
 
-> **Status: Phase 2 (teaching mode).** The app reviews PRs and posts inline *hints* (not answers). Reply `/fix` to a comment to reveal the full solution.
+> **Status: Phase 3 (skill dashboard).** The app reviews PRs and posts inline *hints* (not answers). Reply `/fix` to reveal the full solution. A local dashboard shows each student's weak areas.
 
 ## Requirements
 
@@ -108,6 +108,7 @@ If any required variable is missing, the app stops at startup and lists what to 
 | `npm run dev` | Start the app and restart it on file changes (`node --watch`) |
 | `npm start` | Start the app once |
 | `npm run check:llm` | Send a tiny test prompt to Groq and print the reply |
+| `npm run seed` | Create `data/demo.db` with fake history for the dashboard |
 
 ## How teaching mode works
 
@@ -116,6 +117,25 @@ If any required variable is missing, the app stops at startup and lists what to 
 3. Stuck? Reply `/fix` (or "show fix") in that comment's thread. PRMentor replies with the full explanation and corrected code.
 
 Issues and fixes are stored in a local SQLite file, `data/prmentor.db` (ignored by git). Delete it to start fresh.
+
+## Skill dashboard
+
+With the app running (`npm run dev`), open **http://localhost:3000/dashboard**. It reads `data/prmentor.db` and shows, per student: the top 3 weak areas (last 30 days) with Microsoft Learn links, issues per concept, issues per week, how often the full answer was revealed, and the latest issues with links to each PR. It refreshes itself every 15 seconds.
+
+It is served by the same process as the webhook, on `localhost` only. There is no login, so don't set `HOST=0.0.0.0` unless you want others on your network to see it. Chart.js loads from a CDN, so the charts need internet access.
+
+JSON endpoints: `GET /api/students`, `GET /api/students/:author/skills`, `GET /api/recent` (optionally `?author=name`).
+
+### Demo data
+
+To show the dashboard without real PRs, fill a separate database with fake history (4 students, 6 weeks, improving over time):
+
+```bash
+npm run seed
+DB_PATH=data/demo.db npm run dev
+```
+
+`npm run seed` only writes `data/demo.db` and recreates it from scratch each time; it never touches `data/prmentor.db`. Run `npm run dev` without `DB_PATH` to go back to real data. (The PR links in demo data point at made-up repos.)
 
 ## Project layout
 
@@ -128,10 +148,13 @@ src/
   prompts.js   The system prompt (edit this to change review behaviour)
   concepts.js  The fixed list of concept tags
   diff.js      Filters files and builds the size-limited diff prompt
-  db.js        SQLite storage (data/prmentor.db)
+  db.js        SQLite storage (data/prmentor.db, or DB_PATH)
+  dashboard.js Dashboard page and JSON endpoints
+  dashboard.html The dashboard page (HTML + Chart.js from a CDN)
   config.js    Loads .env and validates required variables
 scripts/
   check-llm.js Groq connectivity check
+  seed-demo.js Fills data/demo.db with fake history
 ```
 
 ## Troubleshooting
