@@ -4,7 +4,7 @@
 
 import { config } from "./config.js";
 import { normalizeConcept } from "./concepts.js";
-import { REVIEW_SYSTEM_PROMPT, buildReviewUserPrompt } from "./prompts.js";
+import { REVIEW_SYSTEM_PROMPT, buildReviewUserPrompt, CONFLICT_SYSTEM_PROMPT, buildConflictUserPrompt } from "./prompts.js";
 
 /** Error with a `kind` so callers can tell rate limits from bad output. */
 export class LLMError extends Error {
@@ -162,11 +162,50 @@ export async function review(diff, note = "") {
     }
   );
 
-  let parsed;
+  return { issues: cleanIssues(parseJsonReply(reply).issues) };
+}
+
+/** Parses the model's reply, turning any failure into a bad_json LLMError. */
+function parseJsonReply(reply) {
   try {
-    parsed = extractJson(reply);
+    return extractJson(reply);
   } catch (err) {
     throw new LLMError(`Model returned unparseable output (${err.message}): ${reply.slice(0, 200)}`, "bad_json");
   }
-  return { issues: cleanIssues(parsed.issues) };
+}
+
+/** Keeps only well-formed conflicts. `otherPr` is added by the caller, not trusted from the model. */
+function cleanConflicts(raw) {
+  if (!Array.isArray(raw)) return [];
+  const conflicts = [];
+  for (const c of raw) {
+    const line = Number(c?.line);
+    if (typeof c?.file !== "string" || !Number.isInteger(line)) continue;
+    if (![c?.summary, c?.hint, c?.fix].every((t) => typeof t === "string" && t.trim())) continue;
+    const severity = String(c.severity || "").toLowerCase();
+    conflicts.push({
+      file: c.file.trim(),
+      line,
+      severity: SEVERITIES.includes(severity) ? severity : "medium",
+      summary: c.summary.trim(),
+      hint: stripCode(c.hint),
+      fix: c.fix.trim(),
+    });
+  }
+  return conflicts.slice(0, 3);
+}
+
+/**
+ * Asks whether two PRs conflict semantically. Returns { conflicts: [{ file, line, severity, summary, hint, fix }] }
+ * where file/line point into THIS PR's diff. Throws LLMError like review() does.
+ */
+export async function checkConflict(args) {
+  const reply = await chat(
+    [
+      { role: "system", content: CONFLICT_SYSTEM_PROMPT },
+      { role: "user", content: buildConflictUserPrompt(args) },
+    ],
+    { json: true, maxTokens: 8000, extra: { reasoning_effort: "low" } }
+  );
+  return { conflicts: cleanConflicts(parseJsonReply(reply).conflicts) };
 }

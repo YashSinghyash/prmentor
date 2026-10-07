@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { run } from "probot";
 import { config, requireEnv, GITHUB_VARS, LLM_VARS } from "./config.js";
 import { handlePullRequest } from "./reviewer.js";
+import { handleConflicts } from "./conflicts.js";
 import { handleReviewComment } from "./fix.js";
 import { dashboardHandler } from "./dashboard.js";
 
@@ -31,6 +32,9 @@ export default function app(probot, { addHandler } = {}) {
 
     // Review the PR. handlePullRequest catches its own errors, so the server never crashes.
     await handlePullRequest(context);
+
+    // Then check whether this PR clashes with other open PRs. Also never throws.
+    await handleConflicts(context);
   });
 
   // Students reply "/fix" on one of our inline comments to reveal the full solution.
@@ -45,7 +49,7 @@ export default function app(probot, { addHandler } = {}) {
 }
 
 // Only start the server when this file is run directly (not when imported by tests later).
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   requireEnv([...GITHUB_VARS, ...LLM_VARS]);
   run(app);
 }
